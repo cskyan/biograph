@@ -5,24 +5,20 @@ ENV CMAKE_MAJOR_VERSION=3.20
 ENV CMAKE_VERSION=3.20.0
 
 # Configure package versions of TensorFlow, PyTorch, CUDA, cuDNN and NCCL
-ENV TENSORFLOW_VERSION=2.3.0
-ENV PYTORCH_VERSION=1.8.1+cu102
-ENV TORCHVISION_VERSION=0.9.1+cu102
-ENV TORCHAUDIO_VERSION=0.8.1
+ENV TENSORFLOW_VERSION=2.6.0
+ENV PYTORCH_MAJOR_VERSION=1.8
+ENV PYTORCH_VERSION=1.8.2+cu102
+ENV TORCHVISION_VERSION=0.9.2+cu102
+ENV TORCHAUDIO_VERSION=0.8.2
 ENV CUDA_VERSION=10.2
 ENV CUDNN_MAJOR_VERSION=8
-ENV CUDNN_VERSION=8.2.1.32-1+cuda10.2
+ENV CUDNN_VERSION=8.3.1.22-1+cuda10.2
 ENV NCLL_MAJOR_VERSION=2
-ENV NCCL_VERSION=2.9.9-1+cuda10.2
-ENV DGL_VERSION=cu102
+ENV NCCL_VERSION=2.11.4-1+cuda10.2
 
 # Configure Python version 2.7 or 3.6
 ARG python=3.6
 ENV PYTHON_VERSION=${python}
-
-# Configure OpenMPI version
-ENV OPENMPI_MAJOR_VERSION=4.1
-ENV OPENMPI_VERSION=4.1.1
 
 # Set default shell to /bin/bash
 SHELL ["/bin/bash", "-cu"]
@@ -43,6 +39,9 @@ RUN sed -i -e 's/# en_US.UTF-8 UTF-8/en_US.UTF-8 UTF-8/' /etc/locale.gen && \
     dpkg-reconfigure --frontend=noninteractive locales && \
     update-locale LANG=en_US.UTF-8
 ENV LANG=en_US.UTF-8
+
+# Add repository for legacy packages
+RUN apt-get install -y software-properties-common && add-apt-repository ppa:deadsnakes/ppa && apt-get update
 
 # Install the essential packages
 RUN apt-get install -y --allow-downgrades --allow-change-held-packages --no-install-recommends \
@@ -83,38 +82,23 @@ RUN curl -O https://bootstrap.pypa.io/get-pip.py && \
     rm get-pip.py && \
     pip install --upgrade pip wheel
 
-# Install TensorFlow, Keras, PyTorch
+# Install TensorFlow, Keras and PyTorch
 RUN pip install future typing
 RUN pip install --no-cache-dir numpy \
         tensorflow-gpu==${TENSORFLOW_VERSION} \
         keras \
         h5py
-RUN pip install --no-cache-dir torch torchvision torchaudio -f https://download.pytorch.org/whl/lts/1.8/torch_lts.html
-#RUN pip install torch===${PYTORCH_VERSION} torchvision===${TORCHVISION_VERSION} torchaudio===${TORCHAUDIO_VERSION} -f https://download.pytorch.org/whl/torch_stable.html
+RUN pip install --no-cache-dir torch===${PYTORCH_VERSION} torchvision===${TORCHVISION_VERSION} torchaudio===${TORCHAUDIO_VERSION} -f https://download.pytorch.org/whl/lts/${PYTORCH_MAJOR_VERSION}/torch_lts.html
 
 # Install apex
-RUN git clone https://github.com/NVIDIA/apex /usr/local/apex && \
+RUN git clone https://github.com/cskyan/apex /usr/local/apex && \
     cd /usr/local/apex && \
+    git checkout tags/latest && \
     pip install -v --no-cache-dir --global-option="--cpp_ext" --global-option="--cuda_ext" ./
 
-# Install Graph-Learning packages
-RUN pip install torch-scatter -f https://pytorch-geometric.com/whl/torch-${PYTORCH_VERSION}.html && pip install torch-sparse -f https://pytorch-geometric.com/whl/torch-${PYTORCH_VERSION}.html && pip install torch-cluster -f https://pytorch-geometric.com/whl/torch-${PYTORCH_VERSION}.html && pip install torch-spline-conv -f https://pytorch-geometric.com/whl/torch-${PYTORCH_VERSION}.html && pip install torch-geometric
-RUN pip install dgl-${DGL_VERSION}
-
-# Install Graph-Learning models
-RUN pip install torchbiggraph
-RUN pip install ampligraph
-RUN pip install karateclub
-RUN pip install rdflib SPARQLWrapper
-
-# Install Faiss
-RUN pip install numpy
-RUN apt-get install -y swig
-RUN git clone https://github.com/facebookresearch/faiss.git /tmp/faiss && \
-    cd /tmp/faiss && \
-    /usr/local/cmake/bin/cmake -B build . -DFAISS_ENABLE_GPU=ON -DFAISS_ENABLE_PYTHON=ON -DCUDAToolkit_ROOT=/usr/local/cuda && make -C build -j $(nproc) faiss && make -C build -j $(nproc) swigfaiss && \
-    cd build/faiss/python && python setup.py install && \
-    rm -rf /tmp/faiss
+# Configure OpenMPI version
+ENV OPENMPI_MAJOR_VERSION=4.1
+ENV OPENMPI_VERSION=4.1.1
 
 # Install Open MPI
 RUN mkdir /tmp/openmpi && \
@@ -143,6 +127,32 @@ RUN apt-get install -y --no-install-recommends openssh-client openssh-server && 
 RUN cat /etc/ssh/ssh_config | grep -v StrictHostKeyChecking > /etc/ssh/ssh_config.new && \
     echo "    StrictHostKeyChecking no" >> /etc/ssh/ssh_config.new && \
     mv /etc/ssh/ssh_config.new /etc/ssh/ssh_config
+
+# Configure Faiss version
+ENV FAISS_VERSION=1.7.1
+
+# Install Faiss
+RUN pip install numpy
+RUN apt-get install -y swig
+RUN git clone https://github.com/facebookresearch/faiss.git /tmp/faiss && \
+    cd /tmp/faiss && \
+    git checkout v${FAISS_VERSION} && \
+    /usr/local/cmake/bin/cmake -B build . -DFAISS_ENABLE_GPU=ON -DFAISS_ENABLE_PYTHON=ON -DCUDAToolkit_ROOT=/usr/local/cuda && make -C build -j $(nproc) faiss && make -C build -j $(nproc) swigfaiss && \
+    cd build/faiss/python && python setup.py install && \
+    rm -rf /tmp/faiss
+
+# Configure DGL version
+ENV DGL_VERSION=cu102
+
+# Install Graph-Learning packages
+RUN pip install torch-scatter torch-sparse torch-cluster torch-spline-conv torch-geometric -f https://data.pyg.org/whl/torch-${PYTORCH_VERSION}+cu102.html
+RUN pip install dgl-${DGL_VERSION}
+
+# Install Graph-Learning models
+RUN pip install torchbiggraph
+RUN pip install ampligraph
+RUN pip install karateclub
+RUN pip install rdflib SPARQLWrapper
 
 # Download source code
 RUN mkdir /source && \

@@ -1,19 +1,19 @@
 FROM ubuntu:18.04
 
+# Configure build tools
+ENV CMAKE_MAJOR_VERSION=3.20
+ENV CMAKE_VERSION=3.20.0
+
 # Configure package versions of TensorFlow, PyTorch
-ENV TENSORFLOW_VERSION=2.5.0
-ENV PYTORCH_VERSION=1.9.0+cpu
-ENV TORCHVISION_VERSION=0.10.0+cpu
-ENV TORCHAUDIO_VERSION=0.9.0
-ENV DGL_VERSION=cu102
+ENV TENSORFLOW_VERSION=2.6.0
+ENV PYTORCH_MAJOR_VERSION=1.8
+ENV PYTORCH_VERSION=1.8.2+cpu
+ENV TORCHVISION_VERSION=0.9.2+cpu
+ENV TORCHAUDIO_VERSION=0.8.2
 
 # Configure Python version 2.7 or 3.6
 ARG python=3.6
 ENV PYTHON_VERSION=${python}
-
-# Configure OpenMPI version
-ENV OPENMPI_MAJOR_VERSION=4.1
-ENV OPENMPI_VERSION=4.1.1
 
 # Set default shell to /bin/bash
 SHELL ["/bin/bash", "-cu"]
@@ -56,6 +56,9 @@ RUN apt-get install -y --allow-downgrades --allow-change-held-packages --no-inst
         ibverbs-providers \
         libopenblas-dev
 
+# Latest build tools
+RUN cd /tmp && wget https://cmake.org/files/v${CMAKE_MAJOR_VERSION}/cmake-${CMAKE_VERSION}-linux-x86_64.tar.gz && tar -zxf cmake-${CMAKE_VERSION}-linux-x86_64.tar.gz && mv cmake-${CMAKE_VERSION}-linux-x86_64 /usr/local/cmake
+
 # Install Python
 RUN if [[ "${PYTHON_VERSION}" == "3.6" ]]; then \
         apt-get install -y python${PYTHON_VERSION}-distutils; \
@@ -72,21 +75,11 @@ RUN pip install --no-cache-dir numpy \
         tensorflow==${TENSORFLOW_VERSION} \
         keras \
         h5py
-RUN pip install --no-cache-dir torch===${PYTORCH_VERSION} torchvision===${TORCHVISION_VERSION} torchaudio===${TORCHAUDIO_VERSION} -f https://download.pytorch.org/whl/torch_stable.html
+RUN pip install --no-cache-dir torch===${PYTORCH_VERSION} torchvision===${TORCHVISION_VERSION} torchaudio===${TORCHAUDIO_VERSION} -f https://download.pytorch.org/whl/lts/${PYTORCH_MAJOR_VERSION}/torch_lts.html
 
-# Install Graph-Learning packages
-RUN pip install torch-scatter -f https://pytorch-geometric.com/whl/torch-${PYTORCH_VERSION}.html && pip install torch-sparse -f https://pytorch-geometric.com/whl/torch-${PYTORCH_VERSION}.html && pip install torch-cluster -f https://pytorch-geometric.com/whl/torch-${PYTORCH_VERSION}.html && pip install torch-spline-conv -f https://pytorch-geometric.com/whl/torch-${PYTORCH_VERSION}.html && pip install torch-geometric
-RUN pip install dgl-${DGL_VERSION}
-
-# Install Graph-Learning models
-RUN pip install torchbiggraph
-RUN pip install ampligraph
-RUN pip install karateclub
-RUN pip install rdflib SPARQLWrapper
-
-
-# Install Faiss
-RUN pip install faiss-cpu
+# Configure OpenMPI version
+ENV OPENMPI_MAJOR_VERSION=4.1
+ENV OPENMPI_VERSION=4.1.1
 
 # Install Open MPI
 RUN mkdir /tmp/openmpi && \
@@ -113,6 +106,19 @@ RUN apt-get install -y --no-install-recommends openssh-client openssh-server && 
 RUN cat /etc/ssh/ssh_config | grep -v StrictHostKeyChecking > /etc/ssh/ssh_config.new && \
     echo "    StrictHostKeyChecking no" >> /etc/ssh/ssh_config.new && \
     mv /etc/ssh/ssh_config.new /etc/ssh/ssh_config
+
+# Install Faiss
+RUN pip install faiss-cpu
+
+# Install Graph-Learning packages
+RUN pip install torch-scatter torch-sparse torch-cluster torch-spline-conv torch-geometric -f https://data.pyg.org/whl/torch-${PYTORCH_VERSION}+cpu.html
+RUN pip install dgl
+
+# Install Graph-Learning models
+RUN pip install torchbiggraph
+RUN pip install ampligraph
+RUN pip install karateclub
+RUN pip install rdflib SPARQLWrapper
 
 # Download source code
 RUN mkdir /source && \
